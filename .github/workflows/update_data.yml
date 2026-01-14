@@ -25,7 +25,13 @@ jobs:
       
       - name: Clean old data
         run: |
-          rm -rf crypto_dataset
+          rm -rf crypto_data
+      
+      - name: Create Kaggle config (before running script)
+        run: |
+          mkdir -p ~/.kaggle
+          echo '{"username":"${{ secrets.KAGGLE_USERNAME }}","key":"${{ secrets.KAGGLE_KEY }}"}' > ~/.kaggle/kaggle.json
+          chmod 600 ~/.kaggle/kaggle.json
       
       - name: Run data collection script
         run: python main.py
@@ -33,11 +39,19 @@ jobs:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
       
-      - name: Create Kaggle config
+      - name: Verify dataset structure
         run: |
-          mkdir -p ~/.kaggle
-          echo '{"username":"${{ secrets.KAGGLE_USERNAME }}","key":"${{ secrets.KAGGLE_KEY }}"}' > ~/.kaggle/kaggle.json
-          chmod 600 ~/.kaggle/kaggle.json
+          echo "=== Verifying dataset structure ==="
+          ls -la crypto_data/
+          echo ""
+          echo "=== Contents of crypto_top100 folder ==="
+          ls -la crypto_data/crypto_top100/ | head -n 20
+          echo ""
+          echo "=== Checking crypto_directory.csv ==="
+          head -n 10 crypto_data/crypto_directory.csv
+          echo ""
+          echo "=== Total CSV files in crypto_top100 ==="
+          ls crypto_data/crypto_top100/*.csv | wc -l
       
       - name: Check if dataset exists
         id: check_dataset
@@ -52,19 +66,28 @@ jobs:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
       
+      - name: Validate metadata JSON
+        run: |
+          cd crypto_data
+          echo "=== Checking dataset-metadata.json ==="
+          if [ -f "dataset-metadata.json" ]; then
+            echo "✓ Metadata file exists"
+            cat dataset-metadata.json | jq '.' > /dev/null && echo "✓ Valid JSON" || echo "✗ Invalid JSON"
+            echo ""
+            echo "=== Metadata preview (first 30 lines) ==="
+            cat dataset-metadata.json | head -n 30
+          else
+            echo "✗ Metadata file not found!"
+            exit 1
+          fi
+      
       - name: Create or Update Kaggle dataset
         run: |
-          # Move into the dataset root directory
-          cd crypto_dataset
-          
-          # DEBUG: Check if metadata json exists and looks correct
-          ls -R
-          cat dataset-metadata.json | head -n 20
+          cd crypto_data
           
           if [ "${{ steps.check_dataset.outputs.exists }}" = "true" ]; then
             echo "Updating existing dataset..."
-            # -r zip preserves directory structure strictly
-            kaggle datasets version -p . -m "Automated update $(date +'%Y-%m-%d')" -r zip
+            kaggle datasets version -p . -m "Automated weekly update on $(date +'%Y-%m-%d')" -r zip
           else
             echo "Creating new dataset..."
             kaggle datasets create -p . -r zip
@@ -72,3 +95,27 @@ jobs:
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      
+      - name: Upload logs and data (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-logs-${{ github.run_number }}
+          path: |
+            crypto_data/
+            *.log
+          retention-days: 7
+      
+      - name: Summary
+        if: success()
+        run: |
+          echo "=== ✅ Dataset Update Successful ==="
+          echo "Dataset: ${{ secrets.KAGGLE_USERNAME }}/top-100-cryptocurrency-historical-data"
+          echo "Date: $(date +'%Y-%m-%d %H:%M:%S UTC')"
+          echo "Status: ${{ steps.check_dataset.outputs.exists == 'true' && 'Updated' || 'Created' }}"
+          echo ""
+          cd crypto_data
+          echo "Files uploaded:"
+          echo "- crypto_directory.csv (1 file)"
+          echo "- crypto_top100/ ($(ls crypto_top100/*.csv 2>/dev/null | wc -l) CSV files)"
+          echo "- dataset-metadata.json (1 file)"
