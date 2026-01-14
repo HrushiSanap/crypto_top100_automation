@@ -40,19 +40,30 @@ jobs:
           echo '{"username":"${{ secrets.KAGGLE_USERNAME }}","key":"${{ secrets.KAGGLE_KEY }}"}' > ~/.kaggle/kaggle.json
           chmod 600 ~/.kaggle/kaggle.json
       
-      - name: Initialize Kaggle dataset (if needed)
+      - name: Check if dataset exists
+        id: check_dataset
         run: |
           cd crypto_data
-          kaggle datasets create -p . || echo "Dataset might already exist, will try to update"
+          if kaggle datasets status ${{ secrets.KAGGLE_USERNAME }}/top-100-cryptocurrency-historical-data 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
         continue-on-error: true
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
       
-      - name: Update Kaggle dataset
+      - name: Create or Update Kaggle dataset
         run: |
           cd crypto_data
-          kaggle datasets version -p . -m "Automated weekly update on $(date +'%Y-%m-%d')"
+          if [ "${{ steps.check_dataset.outputs.exists }}" = "true" ]; then
+            echo "Updating existing dataset..."
+            kaggle datasets version -p . -m "Automated weekly update on $(date +'%Y-%m-%d')"
+          else
+            echo "Creating new dataset..."
+            kaggle datasets create -p . -r zip
+          fi
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
