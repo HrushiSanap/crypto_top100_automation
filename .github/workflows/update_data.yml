@@ -1,0 +1,42 @@
+name: Weekly Crypto Data Update
+
+on:
+  schedule:
+    # Runs at 00:00 on Sunday
+    - cron: '0 0 * * 0'
+  workflow_dispatch: # Allows you to click "Run Now" button manually
+
+jobs:
+  update-dataset:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Run Data Collection Script
+      env:
+        KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+        KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      run: python main.py
+
+    - name: Upload to Kaggle
+      env:
+        KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+        KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      run: |
+        # Initialize dataset if it doesn't exist (First run only)
+        # If the dataset already exists, this command might fail but we proceed to version update
+        kaggle datasets create -p crypto_data -r zip || echo "Dataset might already exist, proceeding to update..."
+        
+        # Update the dataset
+        kaggle datasets version -p crypto_data -m "Weekly automated update" -r zip
