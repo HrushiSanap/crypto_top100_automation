@@ -21,12 +21,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install pandas yfinance pycoingecko kaggle
       
       - name: Clean old data
         run: |
-          rm -rf crypto_data
-          mkdir -p crypto_data
+          rm -rf crypto_dataset
       
       - name: Run data collection script
         run: python main.py
@@ -43,7 +42,6 @@ jobs:
       - name: Check if dataset exists
         id: check_dataset
         run: |
-          cd crypto_data
           if kaggle datasets status ${{ secrets.KAGGLE_USERNAME }}/top-100-cryptocurrency-historical-data 2>/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
@@ -56,10 +54,13 @@ jobs:
       
       - name: Create or Update Kaggle dataset
         run: |
-          cd crypto_data
+          # Important: We enter the root directory of the generated data to upload
+          cd crypto_dataset
+          
           if [ "${{ steps.check_dataset.outputs.exists }}" = "true" ]; then
             echo "Updating existing dataset..."
-            kaggle datasets version -p . -m "Automated weekly update on $(date +'%Y-%m-%d')"
+            # -r zip is often safer for large file counts
+            kaggle datasets version -p . -m "Automated weekly update on $(date +'%Y-%m-%d')" -r zip
           else
             echo "Creating new dataset..."
             kaggle datasets create -p . -r zip
@@ -67,12 +68,3 @@ jobs:
         env:
           KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
           KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-      
-      - name: Upload logs (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: error-logs
-          path: |
-            crypto_data/
-            *.log
