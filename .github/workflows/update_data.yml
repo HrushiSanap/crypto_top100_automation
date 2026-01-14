@@ -1,43 +1,67 @@
-name: Weekly Crypto Data Update
+name: Update Crypto Dataset
 
 on:
   schedule:
-    # Runs at 00:00 UTC on Sunday
-    - cron: '0 0 * * 0'
-  workflow_dispatch: # Allows you to click "Run Now" manually in GitHub Actions
+    - cron: '0 0 * * 0'  # Run every Sunday at midnight UTC
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
-  update-dataset:
+  update-data:
     runs-on: ubuntu-latest
-
+    
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        # We use 3.11 to support modern syntax used in libraries like yfinance
-        python-version: '3.11'
-
-    - name: Install dependencies
-      run: |
-        pip install -r requirements.txt
-
-    - name: Run Data Collection Script
-      env:
-        KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
-        KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-      run: python main.py
-
-    - name: Upload to Kaggle
-      env:
-        KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
-        KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
-      run: |
-        # LOGIC EXPLAINED:
-        # 1. Try to create a new version (update) first.
-        # 2. If that FAILS (because the dataset doesn't exist yet), run the 'create' command.
-        # This prevents the script from creating Version 1 and Version 2 in the same run.
-        
-        kaggle datasets version -p crypto_data -m "Weekly automated update" -r zip || kaggle datasets create -p crypto_data -r zip
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Clean old data
+        run: |
+          rm -rf crypto_data
+          mkdir -p crypto_data
+      
+      - name: Run data collection script
+        run: python main.py
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      
+      - name: Create Kaggle config
+        run: |
+          mkdir -p ~/.kaggle
+          echo '{"username":"${{ secrets.KAGGLE_USERNAME }}","key":"${{ secrets.KAGGLE_KEY }}"}' > ~/.kaggle/kaggle.json
+          chmod 600 ~/.kaggle/kaggle.json
+      
+      - name: Initialize Kaggle dataset (if needed)
+        run: |
+          cd crypto_data
+          kaggle datasets create -p . || echo "Dataset might already exist, will try to update"
+        continue-on-error: true
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      
+      - name: Update Kaggle dataset
+        run: |
+          cd crypto_data
+          kaggle datasets version -p . -m "Automated weekly update on $(date +'%Y-%m-%d')"
+        env:
+          KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+          KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      
+      - name: Upload logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: error-logs
+          path: |
+            crypto_data/
+            *.log
