@@ -2,9 +2,9 @@ name: Weekly Crypto Data Update
 
 on:
   schedule:
-    # Runs at 00:00 on Sunday
+    # Runs at 00:00 UTC on Sunday
     - cron: '0 0 * * 0'
-  workflow_dispatch: # Allows you to click "Run Now" button manually
+  workflow_dispatch: # Allows you to click "Run Now" manually in GitHub Actions
 
 jobs:
   update-dataset:
@@ -17,6 +17,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
+        # We use 3.11 to support modern syntax used in libraries like yfinance
         python-version: '3.11'
 
     - name: Install dependencies
@@ -34,9 +35,9 @@ jobs:
         KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
         KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
       run: |
-        # Initialize dataset if it doesn't exist (First run only)
-        # If the dataset already exists, this command might fail but we proceed to version update
-        kaggle datasets create -p crypto_data -r zip || echo "Dataset might already exist, proceeding to update..."
+        # LOGIC EXPLAINED:
+        # 1. Try to create a new version (update) first.
+        # 2. If that FAILS (because the dataset doesn't exist yet), run the 'create' command.
+        # This prevents the script from creating Version 1 and Version 2 in the same run.
         
-        # Update the dataset
-        kaggle datasets version -p crypto_data -m "Weekly automated update" -r zip
+        kaggle datasets version -p crypto_data -m "Weekly automated update" -r zip || kaggle datasets create -p crypto_data -r zip
