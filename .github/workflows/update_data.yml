@@ -54,13 +54,17 @@ jobs:
       
       - name: Create or Update Kaggle dataset
         run: |
-          # Important: We enter the root directory of the generated data to upload
+          # Move into the dataset root directory
           cd crypto_dataset
+          
+          # DEBUG: Check if metadata json exists and looks correct
+          ls -R
+          cat dataset-metadata.json | head -n 20
           
           if [ "${{ steps.check_dataset.outputs.exists }}" = "true" ]; then
             echo "Updating existing dataset..."
-            # -r zip is often safer for large file counts
-            kaggle datasets version -p . -m "Automated weekly update on $(date +'%Y-%m-%d')" -r zip
+            # -r zip preserves directory structure strictly
+            kaggle datasets version -p . -m "Automated update $(date +'%Y-%m-%d')" -r zip
           else
             echo "Creating new dataset..."
             kaggle datasets create -p . -r zip

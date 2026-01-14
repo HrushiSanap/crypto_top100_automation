@@ -8,7 +8,7 @@ import time
 
 # --- CONFIGURATION ---
 TARGET_COUNT = 100
-FETCH_BUFFER = 200  # Fetch more than 100 to account for missing yfinance data
+FETCH_BUFFER = 200  # Fetch extra to account for missing data
 ROOT_DIR = 'crypto_dataset'
 DATA_SUBDIR = 'crypto_top100'
 
@@ -20,7 +20,7 @@ cg = CoinGeckoAPI()
 csv_output_path = os.path.join(ROOT_DIR, DATA_SUBDIR)
 os.makedirs(csv_output_path, exist_ok=True)
 
-# Column descriptions (applied to every file)
+# Column descriptions
 COLUMN_DESCRIPTIONS = {
     "Date": "The trading date (YYYY-MM-DD format)",
     "Open": "Price at the start of the day (00:00 UTC) in USD",
@@ -34,15 +34,15 @@ COLUMN_DESCRIPTIONS = {
     "SMA_30": "Simple Moving Average over 30 days (30-day trend)"
 }
 
-# Get top cryptocurrencies (fetching buffer to ensure we hit 100 valid ones)
-print(f"Fetching top {FETCH_BUFFER} cryptocurrencies to find {TARGET_COUNT} valid matches...")
+# Fetch top coins
+print(f"Fetching top {FETCH_BUFFER} cryptocurrencies...")
 try:
     top_coins = cg.get_coins_markets(vs_currency='usd', order='market_cap_desc', per_page=FETCH_BUFFER, page=1)
 except Exception as e:
     print(f"Error fetching from CoinGecko: {e}")
     exit(1)
 
-# Lists for metadata and directory
+# Lists for metadata tracking
 files_metadata = []
 crypto_directory_list = []
 
@@ -52,143 +52,129 @@ processed_count = 0
 print(f"\nStarting processing. Target: {TARGET_COUNT} files.\n")
 
 for coin in top_coins:
-    # Stop if we reached the target
     if successful_downloads >= TARGET_COUNT:
         break
 
     processed_count += 1
     coin_name = coin['id']
     coin_symbol = coin['symbol'].upper()
-    
-    # Construct ticker symbol for yfinance
-    # some symbols might need specific formatting for yfinance, but usually SYMBOL-USD works
     ticker_symbol = f"{coin_symbol}-USD"
     
     try:
-        # Download data from yfinance
+        # Download data
         ticker = yf.Ticker(ticker_symbol)
         df = ticker.history(period="max", interval="1d")
         
-        # VALIDATION: Check if data is empty or too short
         if df.empty or len(df) < 10:
-            print(f"[{processed_count}/{FETCH_BUFFER}] ⚠️  Skipping {coin_name} ({ticker_symbol}): No data found on yfinance")
+            print(f"[{processed_count}/{FETCH_BUFFER}] ⚠️  Skipping {coin_name}: No data")
             continue
             
-        # --- Feature Engineering ---
+        # Feature Engineering
         df['Daily_Return'] = df['Close'].pct_change() * 100
         df['High_Low_Spread'] = df['High'] - df['Low']
         df['SMA_7'] = df['Close'].rolling(window=7).mean()
         df['SMA_30'] = df['Close'].rolling(window=30).mean()
         
-        # Reset index to make Date a column
         df.reset_index(inplace=True)
-        
-        # Clean Date format if needed (remove timezone info if present)
         df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
         
-        # Select and reorder columns
         columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 
                    'Daily_Return', 'High_Low_Spread', 'SMA_7', 'SMA_30']
         df = df[columns]
         
-        # --- Save CSV ---
-        # File naming convention: coin_SYMBOL.csv
+        # Save CSV
         filename = f"{coin_name}_{coin_symbol}.csv"
-        # The physical path to save the file
         filepath = os.path.join(csv_output_path, filename)
         df.to_csv(filepath, index=False)
         
-        # Increment success counter
         successful_downloads += 1
-        print(f"[{processed_count}/{FETCH_BUFFER}] ✓ Saved {filename} (Index: {successful_downloads})")
+        print(f"[{processed_count}/{FETCH_BUFFER}] ✓ Saved {filename}")
         
-        # --- 1. Update Crypto Directory List ---
-        # Format: Index, Crypto Name, File Name
+        # Track for directory
         crypto_directory_list.append({
             "Index": successful_downloads,
             "Crypto Name": str(coin_name),
             "File Name": str(filename)
         })
 
-        # --- 2. Update Metadata for this specific file ---
-        # Note: path in metadata must be relative to the root of the dataset upload
-        relative_path = f"{DATA_SUBDIR}/{filename}"
-        
-        # Build column metadata structure for this file
-        schema_fields = []
-        for col_name, col_desc in COLUMN_DESCRIPTIONS.items():
-            schema_fields.append({
-                "name": col_name,
-                "description": col_desc,
-                "type": "string" if col_name == "Date" else "number"
-            })
-
-        file_meta = {
-            "path": relative_path,
-            "description": f"Historical data for cryptocurrency in {filename}",
-            "schema": {
-                "fields": schema_fields
-            }
-        }
-        files_metadata.append(file_meta)
-        
-        # Sleep briefly to avoid rate limiting
-        time.sleep(0.2)
+        time.sleep(0.1)
 
     except Exception as e:
-        print(f"[{processed_count}/{FETCH_BUFFER}] ✗ Error processing {coin_name}: {str(e)}")
+        print(f"[{processed_count}/{FETCH_BUFFER}] ✗ Error {coin_name}: {str(e)}")
 
-# --- Finalize: Create crypto_directory.csv ---
+# --- Create Directory File ---
 print(f"\nCreating crypto_directory.csv...")
 directory_df = pd.DataFrame(crypto_directory_list)
 directory_path = os.path.join(ROOT_DIR, 'crypto_directory.csv')
 directory_df.to_csv(directory_path, index=False)
 
-# Add directory file to metadata
+
+# --- METADATA GENERATION (FIXED) ---
+print("Generating metadata...")
+
+def get_clean_path(folder, filename):
+    # Enforce forward slashes for JSON compatibility
+    path = os.path.join(folder, filename)
+    return path.replace("\\", "/")
+
+# 1. Generate Metadata for Coin CSVs
+for file_info in crypto_directory_list:
+    filename = file_info["File Name"]
+    # Path relative to dataset root
+    clean_path = f"{DATA_SUBDIR}/{filename}" 
+    
+    # "Safety Net": Add column descriptions to the text description
+    col_text_list = "\n".join([f"- **{k}**: {v}" for k, v in COLUMN_DESCRIPTIONS.items()])
+    
+    file_desc = (
+        f"Historical OHLCV data for **{file_info['Crypto Name']}**.\n\n"
+        f"### Column Definitions\n{col_text_list}"
+    )
+    
+    # Strict Schema
+    schema_fields = []
+    for col, desc in COLUMN_DESCRIPTIONS.items():
+        dtype = "string" if col == "Date" else "number"
+        schema_fields.append({"name": col, "description": desc, "type": dtype})
+
+    files_metadata.append({
+        "path": clean_path,
+        "description": file_desc,
+        "schema": {"fields": schema_fields}
+    })
+
+# 2. Generate Metadata for Directory File
+dir_desc = (
+    "Index file mapping Rank (1-100) to Coin Name and Filename.\n\n"
+    "### Columns\n"
+    "- **Index**: Rank by market cap (1-100)\n"
+    "- **Crypto Name**: Name of the coin\n"
+    "- **File Name**: Name of the CSV file in crypto_top100 folder"
+)
+
 files_metadata.append({
     "path": "crypto_directory.csv",
-    "description": "Index of the top 100 cryptocurrencies included in this dataset, mapping Rank to Coin Name and File Name.",
+    "description": dir_desc,
     "schema": {
         "fields": [
-            {"name": "Index", "description": "Rank of the coin (1-100)"},
-            {"name": "Crypto Name", "description": "Full name of the cryptocurrency"},
-            {"name": "File Name", "description": "Name of the corresponding CSV file"}
+            {"name": "Index", "description": "Rank (1-100)", "type": "integer"},
+            {"name": "Crypto Name", "description": "Coin Name", "type": "string"},
+            {"name": "File Name", "description": "Filename", "type": "string"}
         ]
     }
 })
 
-# --- Finalize: Create dataset-metadata.json ---
-print("Creating dataset-metadata.json...")
-
-dataset_description = f"""# Top 100 Cryptocurrency Historical Data
-
-This dataset contains daily OHLCV (Open, High, Low, Close, Volume) data for the top 100 cryptocurrencies by market capitalization.
-
-## Structure
-- `crypto_top100/`: Folder containing 100 individual CSV files.
-- `crypto_directory.csv`: A reference list mapping the Index (1-100) to the Coin Name and File Name.
-
-## Data Source
-Data is sourced from Yahoo Finance using the yfinance Python library.
-Updated automatically via GitHub Actions.
-
-Last updated: {datetime.now().strftime('%Y-%m-%d')}
-"""
-
+# 3. Create JSON
 dataset_metadata = {
     "title": "Top 100 Cryptocurrency Historical Data (Automated)",
-    "id": f"{os.environ.get('KAGGLE_USERNAME', 'your-username')}/top-100-cryptocurrency-historical-data",
+    "id": f"{os.environ.get('KAGGLE_USERNAME')}/top-100-cryptocurrency-historical-data",
     "licenses": [{"name": "other"}],
-    "description": dataset_description,
-    "keywords": ["cryptocurrency", "bitcoin", "finance", "time series", "technical analysis"],
+    "description": f"Automated weekly update of top 100 cryptos.\nLast updated: {datetime.now().strftime('%Y-%m-%d')}",
+    "keywords": ["crypto", "finance", "time series"],
     "resources": files_metadata
 }
 
-metadata_path = os.path.join(ROOT_DIR, 'dataset-metadata.json')
-with open(metadata_path, 'w') as f:
+with open(os.path.join(ROOT_DIR, 'dataset-metadata.json'), 'w') as f:
     json.dump(dataset_metadata, f, indent=2)
 
-print("\n" + "="*60)
-print(f"DONE! Processed {successful_downloads} coins.")
-print(f"Data saved to: {ROOT_DIR}/")
-print("="*60)
+print("✓ Metadata generation complete.")
