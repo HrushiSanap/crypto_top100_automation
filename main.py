@@ -219,43 +219,14 @@ This dataset is perfect for:
 * **CoinGecko:** For providing the comprehensive list of top cryptocurrencies.
 * **Yahoo Finance:** For the historical market data.
 
+---
 ## **Update Frequency**
 
 **Weekly.** The pipeline runs automatically every Sunday at 00:00 UTC.
 
 Last updated: {datetime.now().strftime('%Y-%m-%d')}
 
----
 
-## **How to Use (Starter Code)**
-
-### Load the cryptocurrency directory:
-
-```python
-import pandas as pd
-import glob
-
-# Load the directory to see all available cryptocurrencies
-crypto_dir = pd.read_csv('crypto_directory.csv')
-print(crypto_dir.head())
-```
-
-### Load a specific coin (e.g., Bitcoin):
-
-```python
-# Load Bitcoin data
-btc_df = pd.read_csv('crypto_top100/bitcoin_BTC.csv')
-print(btc_df.head())
-```
-
-### Load ALL files into a single DataFrame:
-
-```python
-# Load all cryptocurrency files
-all_files = glob.glob("crypto_top100/*.csv")
-full_market_df = pd.concat((pd.read_csv(f) for f in all_files), ignore_index=True)
-print(full_market_df.head())
-```
 """
 
 dataset_metadata = {
