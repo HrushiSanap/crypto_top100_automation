@@ -43,9 +43,16 @@ print(f"✓ Created data_dictionary.csv with {len(data_dict_df)} columns documen
 files_metadata = []
 
 # Add data dictionary to metadata first
+dict_columns = [
+    {"name": "Column Name", "description": "The name of the column as it appears in all cryptocurrency CSV files"},
+    {"name": "Description", "description": "Detailed explanation of what the column represents and how it's calculated"},
+    {"name": "Data Type", "description": "The data type of the column (string for dates, float for numeric values)"}
+]
+
 dict_file_meta = {
     "path": "data_dictionary.csv",
-    "description": "Data dictionary explaining all columns present in the cryptocurrency CSV files. Each row describes a column name, its meaning, and data type."
+    "description": "Comprehensive data dictionary documenting all 10 columns present in every cryptocurrency CSV file. Use this as a reference guide to understand the meaning, calculation method, and data type of each column. Essential for data analysis and interpretation.",
+    "columns": dict_columns
 }
 files_metadata.append(dict_file_meta)
 
@@ -94,16 +101,26 @@ for i, coin in enumerate(top_coins, 1):
         # Create file metadata with descriptions
         file_description = (
             f"Historical daily OHLCV data for {coin_name} ({coin_symbol}). "
-            f"Includes price data (Open, High, Low, Close), trading volume, "
-            f"and calculated technical indicators (Daily Returns, Moving Averages, Volatility). "
-            f"Data sourced from Yahoo Finance with maximum available history. "
-            f"See data_dictionary.csv for detailed column descriptions."
+            f"Contains {len(df)} days of price data with 10 columns: Date, Open, High, Low, Close, Volume, "
+            f"Daily_Return (%), High_Low_Spread, SMA_7, and SMA_30. "
+            f"Data spans from {df['Date'].min()} to {df['Date'].max()}. "
+            f"All technical indicators are pre-calculated. See data_dictionary.csv for detailed column descriptions."
         )
         
-        # Add file metadata (no need for column descriptions since we have data_dictionary.csv)
+        # Build columns metadata with descriptions for Kaggle display
+        columns_metadata = []
+        for col in columns:
+            col_info = {
+                "name": col,
+                "description": COLUMN_DESCRIPTIONS.get(col, f"{col} data")
+            }
+            columns_metadata.append(col_info)
+        
+        # Add file metadata with both description and column info
         file_meta = {
             "path": filename,
-            "description": file_description
+            "description": file_description,
+            "columns": columns_metadata
         }
         files_metadata.append(file_meta)
         
