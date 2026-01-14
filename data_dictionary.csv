@@ -1,0 +1,11 @@
+Column Name,Description,Data Type
+Date,The trading date (YYYY-MM-DD format),string
+Open,Price at the start of the day (00:00 UTC) in USD,float
+High,Highest price reached during the day in USD,float
+Low,Lowest price reached during the day in USD,float
+Close,Price at the end of the day (23:59 UTC) in USD,float
+Volume,Total trading volume in USD,float
+Daily_Return,Percentage change from the previous day's close,float
+High_Low_Spread,Intraday volatility calculated as (High - Low),float
+SMA_7,Simple Moving Average over 7 days (7-day trend),float
+SMA_30,Simple Moving Average over 30 days (30-day trend),float

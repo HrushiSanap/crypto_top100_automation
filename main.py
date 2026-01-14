@@ -29,10 +29,30 @@ COLUMN_DESCRIPTIONS = {
     "SMA_30": "Simple Moving Average over 30 days (30-day trend)"
 }
 
+# Create data dictionary CSV file
+print("\nCreating data_dictionary.csv...")
+data_dict_df = pd.DataFrame([
+    {"Column Name": col, "Description": desc, "Data Type": "string" if col == "Date" else "float"}
+    for col, desc in COLUMN_DESCRIPTIONS.items()
+])
+data_dict_path = os.path.join('crypto_data', 'data_dictionary.csv')
+data_dict_df.to_csv(data_dict_path, index=False)
+print(f"✓ Created data_dictionary.csv with {len(data_dict_df)} columns documented")
+
 # List to store file metadata
 files_metadata = []
 
+# Add data dictionary to metadata first
+dict_file_meta = {
+    "path": "data_dictionary.csv",
+    "description": "Data dictionary explaining all columns present in the cryptocurrency CSV files. Each row describes a column name, its meaning, and data type."
+}
+files_metadata.append(dict_file_meta)
+
 # Download data for each coin
+successful_downloads = 0
+failed_downloads = 0
+
 for i, coin in enumerate(top_coins, 1):
     try:
         coin_name = coin['id']
@@ -49,6 +69,7 @@ for i, coin in enumerate(top_coins, 1):
         
         if df.empty:
             print(f"  ⚠️ No data available for {coin_name}")
+            failed_downloads += 1
             continue
         
         # Calculate additional features
@@ -75,38 +96,86 @@ for i, coin in enumerate(top_coins, 1):
             f"Historical daily OHLCV data for {coin_name} ({coin_symbol}). "
             f"Includes price data (Open, High, Low, Close), trading volume, "
             f"and calculated technical indicators (Daily Returns, Moving Averages, Volatility). "
-            f"Data sourced from Yahoo Finance with maximum available history."
+            f"Data sourced from Yahoo Finance with maximum available history. "
+            f"See data_dictionary.csv for detailed column descriptions."
         )
         
-        # Build columns metadata with descriptions
-        columns_metadata = []
-        for col in columns:
-            col_info = {
-                "name": col,
-                "description": COLUMN_DESCRIPTIONS.get(col, f"{col} data")
-            }
-            columns_metadata.append(col_info)
-        
-        # Add file metadata
+        # Add file metadata (no need for column descriptions since we have data_dictionary.csv)
         file_meta = {
             "path": filename,
-            "description": file_description,
-            "columns": columns_metadata
+            "description": file_description
         }
         files_metadata.append(file_meta)
         
+        successful_downloads += 1
         print(f"  ✓ Saved {filename} ({len(df)} rows)")
         
     except Exception as e:
         print(f"  ✗ Error processing {coin_name}: {str(e)}")
+        failed_downloads += 1
 
 # Create dataset metadata
-print("\nCreating dataset metadata...")
+print("\n" + "="*60)
+print("Creating dataset metadata...")
+print("="*60)
+
+dataset_description = f"""# Top 100 Cryptocurrency Historical Data
+
+This dataset contains daily OHLCV (Open, High, Low, Close, Volume) data for the top 100 cryptocurrencies by market capitalization.
+
+## Dataset Contents
+
+- **{successful_downloads} cryptocurrency CSV files** - One file per coin with complete historical data
+- **1 data dictionary file** - Complete documentation of all columns
+
+## Column Information
+
+All cryptocurrency CSV files contain the same 10 columns. For detailed descriptions, please refer to `data_dictionary.csv`.
+
+Quick overview:
+- **Price Data**: Open, High, Low, Close (USD)
+- **Volume**: Total trading volume (USD)
+- **Technical Indicators**: Daily Returns, High-Low Spread, 7-day SMA, 30-day SMA
+
+## Data Source
+
+- Data is sourced from Yahoo Finance using the yfinance Python library
+- Maximum available history for each cryptocurrency
+- Updated automatically every week via GitHub Actions
+
+## File Naming Convention
+
+Files are named as: `{{coin_name}}_{{SYMBOL}}.csv`
+
+Examples:
+- `bitcoin_BTC.csv`
+- `ethereum_ETH.csv`
+- `cardano_ADA.csv`
+
+## Usage
+
+```python
+import pandas as pd
+
+# Load data for Bitcoin
+btc = pd.read_csv('bitcoin_BTC.csv')
+
+# Load data dictionary
+data_dict = pd.read_csv('data_dictionary.csv')
+```
+
+## Updates
+
+This dataset is automatically updated weekly to reflect the current top 100 cryptocurrencies by market cap.
+
+Last updated: {datetime.now().strftime('%Y-%m-%d')}
+"""
 
 dataset_metadata = {
     "title": "Top 100 Cryptocurrency Historical Data (Automated)",
     "id": f"{os.environ.get('KAGGLE_USERNAME', 'your-username')}/top-100-cryptocurrency-historical-data",
     "licenses": [{"name": "other"}],
+    "description": dataset_description,
     "keywords": [
         "cryptocurrencies",
         "cryptocurrency",
@@ -117,7 +186,9 @@ dataset_metadata = {
         "trading",
         "technical analysis",
         "automated",
-        "market data"
+        "market data",
+        "ohlcv",
+        "daily data"
     ],
     "resources": files_metadata
 }
@@ -127,6 +198,15 @@ metadata_path = os.path.join('crypto_data', 'dataset-metadata.json')
 with open(metadata_path, 'w') as f:
     json.dump(dataset_metadata, f, indent=2)
 
+# Print summary
+print(f"\n{'='*60}")
+print("SUMMARY")
+print(f"{'='*60}")
+print(f"✓ Successfully processed: {successful_downloads} cryptocurrencies")
+print(f"✗ Failed: {failed_downloads} cryptocurrencies")
+print(f"✓ Total files created: {successful_downloads + 1} (including data_dictionary.csv)")
 print(f"✓ Metadata saved with {len(files_metadata)} files")
 print(f"✓ All data saved to crypto_data/ directory")
-print("\nDataset is ready for Kaggle upload!")
+print(f"\n{'='*60}")
+print("Dataset is ready for Kaggle upload!")
+print(f"{'='*60}\n")
